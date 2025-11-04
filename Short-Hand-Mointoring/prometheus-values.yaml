@@ -1,0 +1,22 @@
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    retention: 15d
+    
+    additionalScrapeConfigs:
+      - job_name: 'otel-collector-metrics'
+        static_configs:
+          - targets: ['otel-collector-opentelemetry-collector:8889']
+        scrape_interval: 15s
+
+  service:
+    type: ClusterIP
+    port: 9090
+
+grafana:
+  enabled: false  # We'll install Grafana separately
+
+prometheus-node-exporter:
+  enabled: false  # Disabled due to Docker Desktop mount limitations
+

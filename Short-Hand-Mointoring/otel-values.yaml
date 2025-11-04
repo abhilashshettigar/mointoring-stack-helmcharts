@@ -1,0 +1,163 @@
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: 0.104.0
+
+mode: deployment
+
+serviceAccount:
+  create: true
+  name: otel-collector
+
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources:
+        - nodes
+        - nodes/metrics
+        - services
+        - endpoints
+        - pods
+      verbs: ["get", "list", "watch"]
+    - apiGroups:
+        - extensions
+        - networking.k8s.io
+      resources:
+        - ingresses
+      verbs: ["get", "list", "watch"]
+    - nonResourceURLs:
+        - /metrics
+      verbs: ["get"]
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    prometheus:
+      config:
+        scrape_configs:
+          # YugabyteDB TServers
+          # YugabyteDB TServers
+          - job_name: 'yb-master'
+            scrape_interval: 30s
+            metrics_path: '/prometheus-metrics'
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names:
+                    - monitoring
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app]
+                action: keep
+                regex: yb-master
+              - source_labels: [__meta_kubernetes_pod_ip]
+                action: replace
+                target_label: __address__
+                replacement: '$$1:7000'
+              - source_labels: [__meta_kubernetes_pod_name]
+                action: replace
+                target_label: pod
+              - source_labels: [__meta_kubernetes_namespace]
+                action: replace
+                target_label: namespace
+              - action: replace
+                target_label: service
+                replacement: yb-master
+
+            # YB-TServer metrics
+          - job_name: 'yb-tserver'
+            scrape_interval: 30s
+            metrics_path: '/prometheus-metrics'
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names:
+                    - monitoring
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app]
+                action: keep
+                regex: yb-tserver
+              - source_labels: [__meta_kubernetes_pod_ip]
+                action: replace
+                target_label: __address__
+                replacement: '$$1:9000'
+              - source_labels: [__meta_kubernetes_pod_name]
+                action: replace
+                target_label: pod
+              - source_labels: [__meta_kubernetes_namespace]
+                action: replace
+                target_label: namespace
+              - action: replace
+                target_label: service
+                replacement: yb-tserver
+  
+          # YSQL metrics
+          - job_name: 'ysql'
+            scrape_interval: 30s
+            metrics_path: '/prometheus-metrics'
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names:
+                    - monitoring
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app]
+                action: keep
+                regex: yb-tserver
+              - source_labels: [__meta_kubernetes_pod_ip]
+                action: replace
+                target_label: __address__
+                replacement: '$$1:13000'
+              - source_labels: [__meta_kubernetes_pod_name]
+                action: replace
+                target_label: pod
+              - source_labels: [__meta_kubernetes_namespace]
+                action: replace
+                target_label: namespace
+              - action: replace
+                target_label: service
+                replacement: ysql
+  exporters:
+    prometheus:
+      endpoint: "0.0.0.0:8889"
+
+  processors:
+    batch:
+      send_batch_size: 1000
+      timeout: 10s
+    memory_limiter:
+      check_interval: 1s
+      limit_mib: 400
+
+  service:
+    telemetry:
+      metrics:
+        address: ""
+    pipelines:
+      metrics:
+        receivers: [otlp, prometheus]
+        processors: [memory_limiter, batch]
+        exporters: [prometheus]
+
+ports:
+  prometheus:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8888"
